@@ -12,7 +12,7 @@ fn main() {
             break;
         }
         if command.starts_with("echo") {
-            println!("{}", &command[5..]);
+            print!("{}", &command[5..]);
         } else {
             println!("{}: command not found", command.trim_end());
         }

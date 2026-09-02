@@ -7,12 +7,11 @@ fn main() {
         io::stdout().flush().unwrap();
         let mut command = String::new();
         io::stdin().read_line(&mut command).unwrap();
-
-        if command.trim_end() == String::from("exit") {
+        command = command.trim_end().to_string();
+        if command == "exit" {
             break;
-        }
-        if command.starts_with("echo") {
-            print!("{}", &command[5..]);
+        } else if command.starts_with("echo") {
+            println!("{}", &command[5..]);
         } else {
             println!("{}: command not found", command.trim_end());
         }

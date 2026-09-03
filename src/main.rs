@@ -1,6 +1,6 @@
 #[allow(unused_imports)]
 use std::io::{self, Write};
-use std::{env, fs, os::unix::fs::PermissionsExt, path::Path};
+use std::{env, fs, os::unix::fs::PermissionsExt, path::Path, process::Command};
 
 fn main() {
     loop {
@@ -20,13 +20,19 @@ fn main() {
             "echo" => println!("{args}"),
             "type" => match args {
                 "type" | "echo" | "exit" => println!("{} is a shell builtin", args),
-                _ => check_executable(args),
+                _ => match check_executable(args) {
+                    Some(x) => println!("{} is {}", args, x),
+                    None => println!("{}: not found", args),
+                },
             },
-            _ => println!("{}: command not found", cmd),
+            _ => match check_executable(cmd) {
+                Some(path) => execute_program(&path, args),
+                None => println!("{}: command not found", cmd),
+            },
         }
     }
 
-    fn check_executable(args: &str) {
+    fn check_executable(args: &str) -> Option<String> {
         let path = env::var("PATH").unwrap();
         let paths: Vec<&str> = path.split(":").collect();
         for dir in paths {
@@ -34,11 +40,15 @@ fn main() {
             if file.is_file() {
                 let metadata = fs::metadata(&file).unwrap();
                 if metadata.permissions().mode() & 0o111 != 0 {
-                    println!("{} is {}", args, file.to_str().unwrap());
-                    return;
+                    return Some(file.to_str().unwrap().to_owned());
                 }
             }
         }
-        println!("{}: not found", args);
+        None
+    }
+
+    fn execute_program(path: &str, args: &str) {
+        let vec_args: Vec<&str> = args.split_whitespace().collect();
+        let status = Command::new(path).args(vec_args).status().unwrap();
     }
 }

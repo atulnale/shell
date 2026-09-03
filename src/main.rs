@@ -32,7 +32,7 @@ fn main() {
         for dir in paths {
             let file = Path::new(dir).join(args);
             if file.is_file() {
-                println!("{} is {}", args, file.to_str().unwrap())
+                println!("{} is {}", args, file.to_str().unwrap());
                 return;
             }
         }

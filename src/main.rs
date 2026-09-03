@@ -3,6 +3,7 @@ use std::io::{self, Write};
 use std::{env, fs, os::unix::fs::PermissionsExt, path::Path, process::Command};
 
 fn main() {
+    let BUILTIN_COMMANDS = vec!["type", "echo", "exit", "pwd"];
     loop {
         print!("$ ");
         io::stdout().flush().unwrap();
@@ -19,7 +20,7 @@ fn main() {
             "exit" => break,
             "echo" => println!("{args}"),
             "type" => match args {
-                "type" | "echo" | "exit" => println!("{} is a shell builtin", args),
+                "type" | "echo" | "exit" | "pwd" => println!("{} is a shell builtin", args),
                 _ => match check_executable(args) {
                     Some(x) => println!("{} is {}", args, x),
                     None => println!("{}: not found", args),

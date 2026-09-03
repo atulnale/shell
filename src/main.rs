@@ -28,7 +28,7 @@ fn main() {
 
     fn check_executable(args: &str) {
         let path = env::var("PATH").unwrap();
-        let mut paths: Vec<&str> = path.split(":").collect();
+        let paths: Vec<&str> = path.split(":").collect();
         for dir in paths {
             let file = Path::new(dir).join(args);
             if file.is_file() {

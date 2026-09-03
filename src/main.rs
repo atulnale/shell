@@ -1,6 +1,6 @@
 #[allow(unused_imports)]
 use std::io::{self, Write};
-use std::{env, path::Path};
+use std::{env, fs, os::unix::fs::PermissionsExt, path::Path, ptr::metadata};
 
 fn main() {
     loop {
@@ -32,8 +32,11 @@ fn main() {
         for dir in paths {
             let file = Path::new(dir).join(args);
             if file.is_file() {
-                println!("{} is {}", args, file.to_str().unwrap());
-                return;
+                let metadata = fs::metadata(&path).unwrap();
+                if metadata.permissions().mode() & 0o111 != 0 {
+                    println!("{} is {}", args, file.to_str().unwrap());
+                    return;
+                }
             }
         }
         println!("{}: not found", args);

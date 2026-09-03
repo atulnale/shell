@@ -19,6 +19,7 @@ fn main() {
         match cmd {
             "exit" => break,
             "echo" => println!("{args}"),
+            "pwd" => println!("{}", env::current_dir().unwrap().display()),
             "type" => match args {
                 "type" | "echo" | "exit" | "pwd" => println!("{} is a shell builtin", args),
                 _ => match check_executable(args) {

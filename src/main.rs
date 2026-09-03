@@ -47,8 +47,8 @@ fn main() {
         None
     }
 
-    fn execute_program(path: &str, args: &str) {
+    fn execute_program(cmd: &str, args: &str) {
         let vec_args: Vec<&str> = args.split_whitespace().collect();
-        let status = Command::new(path).args(vec_args).status().unwrap();
+        let status = Command::new(cmd).args(vec_args).status().unwrap();
     }
 }

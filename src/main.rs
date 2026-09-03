@@ -32,7 +32,7 @@ fn main() {
         for dir in paths {
             let file = Path::new(dir).join(args);
             if file.is_file() {
-                let metadata = fs::metadata(&path).unwrap();
+                let metadata = fs::metadata(&file).unwrap();
                 if metadata.permissions().mode() & 0o111 != 0 {
                     println!("{} is {}", args, file.to_str().unwrap());
                     return;

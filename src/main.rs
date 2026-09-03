@@ -26,7 +26,7 @@ fn main() {
                 },
             },
             _ => match check_executable(cmd) {
-                Some(path) => execute_program(&path, args),
+                Some(path) => execute_program(cmd, args),
                 None => println!("{}: command not found", cmd),
             },
         }

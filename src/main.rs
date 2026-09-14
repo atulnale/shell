@@ -3,7 +3,7 @@ use std::io::{self, Write};
 use std::{env, fs, os::unix::fs::PermissionsExt, path::Path, process::Command};
 
 fn main() {
-    let BUILTIN_COMMANDS = vec!["type", "echo", "exit", "pwd"];
+    let BUILTIN_COMMANDS = vec!["type", "echo", "exit", "pwd", "cd"];
     loop {
         print!("$ ");
         io::stdout().flush().unwrap();
@@ -20,8 +20,9 @@ fn main() {
             "exit" => break,
             "echo" => println!("{args}"),
             "pwd" => println!("{}", env::current_dir().unwrap().display()),
+            "cd" => change_directory(args),
             "type" => match args {
-                "type" | "echo" | "exit" | "pwd" => println!("{} is a shell builtin", args),
+                "type" | "echo" | "exit" | "pwd" | "cd" => println!("{} is a shell builtin", args),
                 _ => match check_executable(args) {
                     Some(x) => println!("{} is {}", args, x),
                     None => println!("{}: not found", args),
@@ -31,6 +32,16 @@ fn main() {
                 Some(path) => execute_program(cmd, args),
                 None => println!("{}: command not found", cmd),
             },
+        }
+    }
+
+    fn change_directory(args: &str) {
+        let path: Vec<&str> = args.split(" ").collect();
+        let dir = Path::new(path[0]);
+        if dir.is_dir() {
+            env::set_current_dir(dir).unwrap();
+        } else {
+            println!("cd: {}: No such file or directory", path[0]);
         }
     }
 

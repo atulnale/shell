@@ -37,7 +37,12 @@ fn main() {
 
     fn change_directory(args: &str) {
         let path: Vec<&str> = args.split(" ").collect();
-        let dir = Path::new(path[0]);
+        let dir_path = if path[0] == "~" {
+            env::var("HOME").expect("Requires Home path")
+        } else {
+            path[0].to_string()
+        };
+        let dir = Path::new(&dir_path);
         if dir.is_dir() {
             env::set_current_dir(dir).unwrap();
         } else {
@@ -64,4 +69,10 @@ fn main() {
         let vec_args: Vec<&str> = args.split_whitespace().collect();
         let status = Command::new(cmd).args(vec_args).status().unwrap();
     }
+}
+
+#[test]
+fn test1() {
+    let home = env::var("HOME").expect("Requires Home path");
+    println!("{home}");
 }

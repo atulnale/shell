@@ -8,13 +8,43 @@ use std::{
     process::{Command, Stdio},
 };
 
+use rustyline::{
+    Context, Editor, Helper, Highlighter, Hinter, Validator,
+    completion::{Completer, Pair},
+    error::ReadlineError,
+};
+
+#[derive(Helper, Hinter, Highlighter, Validator)]
+struct ShellCompleter;
+
+impl Completer for ShellCompleter {
+    type Candidate = Pair;
+    fn complete(
+        &self,
+        line: &str,
+        pos: usize,
+        ctx: &rustyline::Context<'_>,
+    ) -> rustyline::Result<(usize, Vec<Self::Candidate>)> {
+        let supported_commands = vec!["echo ", "exit "];
+        let matches = supported_commands
+            .iter()
+            .filter(|command| command.starts_with(line))
+            .map(|command| Pair {
+                display: command.to_string(),
+                replacement: command.to_string(),
+            })
+            .collect();
+
+        Ok((0, matches))
+    }
+}
+
 fn main() {
     let BUILTIN_COMMANDS = vec!["type", "echo", "exit", "pwd", "cd"];
+    let mut rl = rustyline::Editor::new().unwrap();
+    rl.set_helper(Some(ShellCompleter));
     loop {
-        print!("$ ");
-        io::stdout().flush().unwrap();
-        let mut command = String::new();
-        io::stdin().read_line(&mut command).unwrap();
+        let mut command = rl.readline("$ ").unwrap();
         command = command.trim_end().to_string();
         if command == "" {
             continue;

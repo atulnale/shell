@@ -2,7 +2,7 @@
 use std::io::{self, Write};
 use std::{
     env,
-    fs::{self, File},
+    fs::{self, File, OpenOptions},
     os::unix::fs::PermissionsExt,
     path::Path,
     process::{Command, Stdio},
@@ -76,15 +76,21 @@ fn main() {
         let mut output_file = None;
         let mut cmd_args = Vec::new();
         let mut is_err_redirect = false;
+        let mut append = false;
         while let Some(arg) = iter.next() {
-            if arg == ">" || arg == "1>" {
+            if arg == ">" || arg == "1>" || arg == ">>" || arg == "1>>" {
+                if arg == ">>" || arg == "1>>" {
+                    append = true;
+                }
                 output_file = iter.next();
-                is_err_redirect = false;
                 break;
             }
-            if arg == "2>" {
-                output_file = iter.next();
+            if arg == "2>" || arg == "2>>" {
+                if arg == "2>>" {
+                    append = true;
+                }
                 is_err_redirect = true;
+                output_file = iter.next();
                 break;
             }
             cmd_args.push(arg);
@@ -92,7 +98,13 @@ fn main() {
         let mut cmd = Command::new(cmd_path);
         cmd.args(&cmd_args);
         if let Some(filename) = output_file {
-            let file = File::create(filename).expect("Can't create file");
+            let file = OpenOptions::new()
+                .create(true)
+                .write(true)
+                .append(append)
+                .truncate(!append)
+                .open(filename)
+                .expect("Can't create file");
             if is_err_redirect {
                 cmd.stderr(Stdio::from(file));
             } else {
@@ -104,9 +116,15 @@ fn main() {
 
     fn builtin_redirect(cmd: &str, args: &str) {
         let mut output: Box<dyn Write> = Box::new(io::stdout());
-        let (output_file, cmd_args, is_err_redirect) = rediret_filename(args);
+        let (output_file, cmd_args, is_err_redirect, append) = rediret_filename(args);
         if let Some(filename) = output_file {
-            let file = File::create(filename).expect("can't create file");
+            let file = OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(!append)
+                .append(append)
+                .open(filename)
+                .expect("Can't create file");
             if !is_err_redirect {
                 output = Box::new(file);
             }
@@ -114,24 +132,31 @@ fn main() {
         write!(output, "{}\n", cmd_args.join(" ")).unwrap();
     }
 
-    fn rediret_filename(args: &str) -> (Option<&str>, Vec<&str>, bool) {
+    fn rediret_filename(args: &str) -> (Option<&str>, Vec<&str>, bool, bool) {
         let mut iter = args.split_whitespace();
         let mut output_file = None;
         let mut cmd_args = Vec::new();
         let mut is_err_redirect = false;
+        let mut append = false;
         while let Some(arg) = iter.next() {
-            if arg == ">" || arg == "1>" {
+            if arg == ">" || arg == "1>" || arg == ">>" || arg == "1>>" {
+                if arg == ">>" || arg == "1>>" {
+                    append = true;
+                }
                 output_file = iter.next();
                 break;
             }
-            if arg == "2>" {
+            if arg == "2>" || arg == "2>>" {
+                if arg == "2>>" {
+                    append = true;
+                }
                 is_err_redirect = true;
                 output_file = iter.next();
                 break;
             }
             cmd_args.push(arg);
         }
-        (output_file, cmd_args, is_err_redirect)
+        (output_file, cmd_args, is_err_redirect, append)
     }
 }
 

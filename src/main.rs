@@ -75,9 +75,16 @@ fn main() {
         let mut iter = args.split_whitespace();
         let mut output_file = None;
         let mut cmd_args = Vec::new();
+        let mut is_err_redirect = false;
         while let Some(arg) = iter.next() {
             if arg == ">" || arg == "1>" {
                 output_file = iter.next();
+                is_err_redirect = false;
+                break;
+            }
+            if arg == "2>" {
+                output_file = iter.next();
+                is_err_redirect = true;
                 break;
             }
             cmd_args.push(arg);
@@ -86,33 +93,45 @@ fn main() {
         cmd.args(&cmd_args);
         if let Some(filename) = output_file {
             let file = File::create(filename).expect("Can't create file");
-            cmd.stdout(Stdio::from(file));
+            if is_err_redirect {
+                cmd.stderr(Stdio::from(file));
+            } else {
+                cmd.stdout(Stdio::from(file));
+            }
         }
-
-        cmd.status().unwrap();
+        cmd.status();
     }
 
     fn builtin_redirect(cmd: &str, args: &str) {
         let mut output: Box<dyn Write> = Box::new(io::stdout());
-        let (output_file, cmd_args) = rediret_filename(args);
+        let (output_file, cmd_args, is_err_redirect) = rediret_filename(args);
         if let Some(filename) = output_file {
-            output = Box::new(File::create(filename).expect("can't create file"));
+            let file = File::create(filename).expect("can't create file");
+            if !is_err_redirect {
+                output = Box::new(file);
+            }
         }
         write!(output, "{}\n", cmd_args.join(" ")).unwrap();
     }
 
-    fn rediret_filename(args: &str) -> (Option<&str>, Vec<&str>) {
+    fn rediret_filename(args: &str) -> (Option<&str>, Vec<&str>, bool) {
         let mut iter = args.split_whitespace();
         let mut output_file = None;
         let mut cmd_args = Vec::new();
+        let mut is_err_redirect = false;
         while let Some(arg) = iter.next() {
             if arg == ">" || arg == "1>" {
                 output_file = iter.next();
                 break;
             }
+            if arg == "2>" {
+                is_err_redirect = true;
+                output_file = iter.next();
+                break;
+            }
             cmd_args.push(arg);
         }
-        (output_file, cmd_args)
+        (output_file, cmd_args, is_err_redirect)
     }
 }
 

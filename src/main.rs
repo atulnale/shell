@@ -1,6 +1,12 @@
 #[allow(unused_imports)]
 use std::io::{self, Write};
-use std::{env, fs, os::unix::fs::PermissionsExt, path::Path, process::Command};
+use std::{
+    env,
+    fs::{self, File},
+    os::unix::fs::PermissionsExt,
+    path::Path,
+    process::{Command, Stdio},
+};
 
 fn main() {
     let BUILTIN_COMMANDS = vec!["type", "echo", "exit", "pwd", "cd"];
@@ -18,7 +24,7 @@ fn main() {
         let args = parse.next().unwrap_or("").trim_start();
         match cmd {
             "exit" => break,
-            "echo" => println!("{args}"),
+            "echo" => builtin_redirect(cmd, args),
             "pwd" => println!("{}", env::current_dir().unwrap().display()),
             "cd" => change_directory(args),
             "type" => match args {
@@ -65,9 +71,48 @@ fn main() {
         None
     }
 
-    fn execute_program(cmd: &str, args: &str) {
-        let vec_args: Vec<&str> = args.split_whitespace().collect();
-        let status = Command::new(cmd).args(vec_args).status().unwrap();
+    fn execute_program(cmd_path: &str, args: &str) {
+        let mut iter = args.split_whitespace();
+        let mut output_file = None;
+        let mut cmd_args = Vec::new();
+        while let Some(arg) = iter.next() {
+            if arg == ">" || arg == "1>" {
+                output_file = iter.next();
+                break;
+            }
+            cmd_args.push(arg);
+        }
+        let mut cmd = Command::new(cmd_path);
+        cmd.args(&cmd_args);
+        if let Some(filename) = output_file {
+            let file = File::create(filename).expect("Can't create file");
+            cmd.stdout(Stdio::from(file));
+        }
+
+        cmd.status().unwrap();
+    }
+
+    fn builtin_redirect(cmd: &str, args: &str) {
+        let mut output: Box<dyn Write> = Box::new(io::stdout());
+        let (output_file, cmd_args) = rediret_filename(args);
+        if let Some(filename) = output_file {
+            output = Box::new(File::create(filename).expect("can't create file"));
+        }
+        write!(output, "{}\n", cmd_args.join(" ")).unwrap();
+    }
+
+    fn rediret_filename(args: &str) -> (Option<&str>, Vec<&str>) {
+        let mut iter = args.split_whitespace();
+        let mut output_file = None;
+        let mut cmd_args = Vec::new();
+        while let Some(arg) = iter.next() {
+            if arg == ">" || arg == "1>" {
+                output_file = iter.next();
+                break;
+            }
+            cmd_args.push(arg);
+        }
+        (output_file, cmd_args)
     }
 }
 

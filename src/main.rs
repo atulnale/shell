@@ -71,7 +71,7 @@ fn file_completion(line: &[&str]) -> Vec<Pair> {
             })
         } else if metadata.is_dir() {
             matches.push(Pair {
-                display: format!("{} ", name.to_string()),
+                display: format!("{}/ ", name.to_string()),
                 replacement: format!("{} {}{}/", line[0], path_pref, name.to_string()),
             })
         }

@@ -25,55 +25,101 @@ impl Completer for ShellCompleter {
         pos: usize,
         ctx: &rustyline::Context<'_>,
     ) -> rustyline::Result<(usize, Vec<Self::Candidate>)> {
-        let supported_commands = vec!["echo ", "exit "];
-        let mut matches: Vec<Pair> = supported_commands
-            .iter()
-            .filter(|command| command.starts_with(line))
-            .map(|command| Pair {
-                display: command.to_string(),
-                replacement: command.to_string(),
-            })
-            .collect();
-        let path_var = env::var("PATH").unwrap_or_default();
-        for dir in path_var.split(":") {
-            let path = Path::new(&dir);
-            if !path.exists() || !path.is_dir() {
-                continue;
-            }
-
-            let entries = match fs::read_dir(path) {
-                Ok(entries) => entries,
-                Err(_) => continue,
-            };
-            for entry in entries.flatten() {
-                let file_name = entry.file_name();
-                let Some(name) = file_name.to_str() else {
-                    continue;
-                };
-                if !name.starts_with(line) {
-                    continue;
-                }
-                if entry.path().is_dir() {
-                    continue;
-                }
-                let metadata = match entry.metadata() {
-                    Ok(metadata) => metadata,
-                    Err(_) => continue,
-                };
-
-                if metadata.is_file() {
-                    if metadata.permissions().mode() & 0o111 != 0 {
-                        matches.push(Pair {
-                            display: format!("{} ", name.to_string()),
-                            replacement: format!("{} ", name.to_string()),
-                        })
-                    }
-                }
-            }
-        }
+        let arr: Vec<&str> = line.split_whitespace().collect();
+        let mut matches = if arr.len() == 1 {
+            command_completion(line)
+        } else if arr[0] == "cat" {
+            file_completion(arr[1])
+        } else {
+            Vec::new()
+        };
         matches.sort_by(|a, b| a.display.cmp(&b.display));
         Ok((0, matches))
     }
+}
+
+fn file_completion(line: &str) -> Vec<Pair> {
+    let mut matches: Vec<Pair> = Vec::new();
+    let curr_dir = env::current_dir().unwrap();
+    let entries = match fs::read_dir(curr_dir) {
+        Ok(entries) => entries,
+        Err(_) => return Vec::new(),
+    };
+
+    for entry in entries.flatten() {
+        let file_name = entry.file_name();
+        let Some(name) = file_name.to_str() else {
+            continue;
+        };
+        if !name.starts_with(line) {
+            continue;
+        }
+        if entry.path().is_dir() {
+            continue;
+        }
+        let metadata = match entry.metadata() {
+            Ok(metadata) => metadata,
+            Err(_) => continue,
+        };
+        if metadata.is_file() {
+            matches.push(Pair {
+                display: format!("{} ", name.to_string()),
+                replacement: format!("cat {} ", name.to_string()),
+            })
+        }
+    }
+
+    matches
+}
+
+fn command_completion(line: &str) -> Vec<Pair> {
+    let supported_commands = vec!["echo ", "exit "];
+    let mut matches: Vec<Pair> = supported_commands
+        .iter()
+        .filter(|command| command.starts_with(line))
+        .map(|command| Pair {
+            display: command.to_string(),
+            replacement: command.to_string(),
+        })
+        .collect();
+    let path_var = env::var("PATH").unwrap_or_default();
+    for dir in path_var.split(":") {
+        let path = Path::new(&dir);
+        if !path.exists() || !path.is_dir() {
+            continue;
+        }
+
+        let entries = match fs::read_dir(path) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let file_name = entry.file_name();
+            let Some(name) = file_name.to_str() else {
+                continue;
+            };
+            if !name.starts_with(line) {
+                continue;
+            }
+            if entry.path().is_dir() {
+                continue;
+            }
+            let metadata = match entry.metadata() {
+                Ok(metadata) => metadata,
+                Err(_) => continue,
+            };
+
+            if metadata.is_file() {
+                if metadata.permissions().mode() & 0o111 != 0 {
+                    matches.push(Pair {
+                        display: format!("{} ", name.to_string()),
+                        replacement: format!("{} ", name.to_string()),
+                    })
+                }
+            }
+        }
+    }
+    matches
 }
 
 fn main() {

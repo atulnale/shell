@@ -28,17 +28,16 @@ impl Completer for ShellCompleter {
         let arr: Vec<&str> = line.split_whitespace().collect();
         let mut matches = if arr.len() == 1 {
             command_completion(line)
-        } else if arr[0] == "cat" {
-            file_completion(arr[1])
         } else {
-            Vec::new()
+            file_completion(&arr)
         };
         matches.sort_by(|a, b| a.display.cmp(&b.display));
         Ok((0, matches))
     }
 }
 
-fn file_completion(line: &str) -> Vec<Pair> {
+fn file_completion(line: &[&str]) -> Vec<Pair> {
+    let file_suff = line[1];
     let mut matches: Vec<Pair> = Vec::new();
     let curr_dir = env::current_dir().unwrap();
     let entries = match fs::read_dir(curr_dir) {
@@ -51,7 +50,7 @@ fn file_completion(line: &str) -> Vec<Pair> {
         let Some(name) = file_name.to_str() else {
             continue;
         };
-        if !name.starts_with(line) {
+        if !name.starts_with(file_suff) {
             continue;
         }
         if entry.path().is_dir() {
@@ -64,7 +63,7 @@ fn file_completion(line: &str) -> Vec<Pair> {
         if metadata.is_file() {
             matches.push(Pair {
                 display: format!("{} ", name.to_string()),
-                replacement: format!("cat {} ", name.to_string()),
+                replacement: format!("{} {} ", line[0], name.to_string()),
             })
         }
     }

@@ -9,7 +9,7 @@ use std::{
 };
 
 use rustyline::{
-    Context, Editor, Helper, Highlighter, Hinter, Validator,
+    CompletionType, Config, Context, Editor, Helper, Highlighter, Hinter, Validator,
     completion::{Completer, Pair},
     error::ReadlineError,
 };
@@ -71,14 +71,17 @@ impl Completer for ShellCompleter {
                 }
             }
         }
-
+        matches.sort_by(|a, b| a.display.cmp(&b.display));
         Ok((0, matches))
     }
 }
 
 fn main() {
     let BUILTIN_COMMANDS = vec!["type", "echo", "exit", "pwd", "cd"];
-    let mut rl = rustyline::Editor::new().unwrap();
+    let config = Config::builder()
+        .completion_type(CompletionType::List)
+        .build();
+    let mut rl = rustyline::Editor::with_config(config).unwrap();
     rl.set_helper(Some(ShellCompleter));
     loop {
         let mut command = rl.readline("$ ").unwrap();

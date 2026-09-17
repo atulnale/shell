@@ -25,8 +25,9 @@ impl Completer for ShellCompleter {
         pos: usize,
         ctx: &rustyline::Context<'_>,
     ) -> rustyline::Result<(usize, Vec<Self::Candidate>)> {
-        let arr: Vec<&str> = line.split_whitespace().collect();
-        let mut matches = if arr.len() == 1 {
+        let mut arr: Vec<&str> = line.split_whitespace().collect();
+        let is_cmd_completion = !line.ends_with(" ") && arr.len() < 2;
+        let mut matches = if is_cmd_completion {
             command_completion(line)
         } else {
             file_completion(&arr)
@@ -37,9 +38,10 @@ impl Completer for ShellCompleter {
 }
 
 fn file_completion(line: &[&str]) -> Vec<Pair> {
-    let (dir, file_suff) = match line[1].rsplit_once('/') {
+    let input = if line.len() < 2 { "" } else { line[1] };
+    let (dir, file_suff) = match input.rsplit_once('/') {
         Some((dir, file_suff)) => (dir, file_suff),
-        None => (".", line[1]),
+        None => (".", input),
     };
 
     let path_pref: &str = if dir == "." { "" } else { &format!("{dir}/") };
@@ -58,9 +60,6 @@ fn file_completion(line: &[&str]) -> Vec<Pair> {
         if !name.starts_with(file_suff) {
             continue;
         }
-        if entry.path().is_dir() {
-            continue;
-        }
         let metadata = match entry.metadata() {
             Ok(metadata) => metadata,
             Err(_) => continue,
@@ -69,6 +68,11 @@ fn file_completion(line: &[&str]) -> Vec<Pair> {
             matches.push(Pair {
                 display: format!("{} ", name.to_string()),
                 replacement: format!("{} {}{} ", line[0], path_pref, name.to_string()),
+            })
+        } else if metadata.is_dir() {
+            matches.push(Pair {
+                display: format!("{} ", name.to_string()),
+                replacement: format!("{} {}{}/", line[0], path_pref, name.to_string()),
             })
         }
     }

@@ -37,10 +37,15 @@ impl Completer for ShellCompleter {
 }
 
 fn file_completion(line: &[&str]) -> Vec<Pair> {
-    let file_suff = line[1];
+    let (dir, file_suff) = match line[1].rsplit_once('/') {
+        Some((dir, file_suff)) => (dir, file_suff),
+        None => (".", line[1]),
+    };
+
+    let path_pref: &str = if dir == "." { "" } else { &format!("{dir}/") };
+
     let mut matches: Vec<Pair> = Vec::new();
-    let curr_dir = env::current_dir().unwrap();
-    let entries = match fs::read_dir(curr_dir) {
+    let entries = match fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(_) => return Vec::new(),
     };
@@ -63,7 +68,7 @@ fn file_completion(line: &[&str]) -> Vec<Pair> {
         if metadata.is_file() {
             matches.push(Pair {
                 display: format!("{} ", name.to_string()),
-                replacement: format!("{} {} ", line[0], name.to_string()),
+                replacement: format!("{} {}{} ", line[0], path_pref, name.to_string()),
             })
         }
     }

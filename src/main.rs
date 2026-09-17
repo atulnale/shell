@@ -38,7 +38,14 @@ impl Completer for ShellCompleter {
 }
 
 fn file_completion(line: &[&str]) -> Vec<Pair> {
-    let input = if line.len() < 2 { "" } else { line[1] };
+    let search_prefix;
+    let input = if line.len() < 2 {
+        search_prefix = line[0].to_owned();
+        ""
+    } else {
+        search_prefix = line[0..(line.len() - 1)].join(" ").to_owned();
+        line[line.len() - 1]
+    };
     let (dir, file_suff) = match input.rsplit_once('/') {
         Some((dir, file_suff)) => (dir, file_suff),
         None => (".", input),
@@ -67,12 +74,12 @@ fn file_completion(line: &[&str]) -> Vec<Pair> {
         if metadata.is_file() {
             matches.push(Pair {
                 display: format!("{} ", name.to_string()),
-                replacement: format!("{} {}{} ", line[0], path_pref, name.to_string()),
+                replacement: format!("{} {}{} ", search_prefix, path_pref, name.to_string()),
             })
         } else if metadata.is_dir() {
             matches.push(Pair {
                 display: format!("{}/ ", name.to_string()),
-                replacement: format!("{} {}{}/", line[0], path_pref, name.to_string()),
+                replacement: format!("{} {}{}/", search_prefix, path_pref, name.to_string()),
             })
         }
     }
@@ -286,6 +293,7 @@ fn main() {
 
 #[test]
 fn test1() {
-    let home = env::var("HOME").expect("Requires Home path");
-    println!("{home}");
+    let arr = vec![1, 2, 3, 4, 5, 6];
+    let test = &arr[0..3];
+    println!("{:?}", test);
 }

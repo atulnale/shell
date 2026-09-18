@@ -3,10 +3,12 @@ use std::io::{self, Write};
 use std::{
     collections::HashMap,
     env,
+    fmt::format,
     fs::{self, File, FileType, OpenOptions},
     os::unix::fs::PermissionsExt,
     path::Path,
     process::{Command, Stdio},
+    sync::{LazyLock, Mutex},
 };
 
 use rustyline::{
@@ -14,6 +16,9 @@ use rustyline::{
     completion::{Completer, Pair},
     error::ReadlineError,
 };
+
+static COMPLETE_MAP: LazyLock<Mutex<HashMap<String, String>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Helper, Hinter, Highlighter, Validator)]
 struct ShellCompleter;
@@ -27,6 +32,16 @@ impl Completer for ShellCompleter {
         ctx: &rustyline::Context<'_>,
     ) -> rustyline::Result<(usize, Vec<Self::Candidate>)> {
         let mut arr: Vec<&str> = line.split_whitespace().collect();
+        if COMPLETE_MAP.lock().unwrap().contains_key(arr[0]) && line.ends_with(" ") {
+            let script_output = execute_script(COMPLETE_MAP.lock().unwrap().get(arr[0]).unwrap());
+            return Ok((
+                0,
+                vec![Pair {
+                    display: script_output.clone(),
+                    replacement: format!("{} {} ", arr[0], &script_output),
+                }],
+            ));
+        }
         let is_cmd_completion = !line.ends_with(" ") && arr.len() < 2;
         let mut matches = if is_cmd_completion {
             command_completion(line)
@@ -36,6 +51,12 @@ impl Completer for ShellCompleter {
         matches.sort_by(|a, b| a.display.cmp(&b.display));
         Ok((0, matches))
     }
+}
+
+fn execute_script(path: &str) -> String {
+    let output = Command::new(path).output().unwrap();
+
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
 }
 
 fn file_completion(line: &[&str]) -> Vec<Pair> {
@@ -145,7 +166,6 @@ fn main() {
         .build();
     let mut rl = rustyline::Editor::with_config(config).unwrap();
     rl.set_helper(Some(ShellCompleter));
-    let mut complete_map: HashMap<String, String> = HashMap::new();
     loop {
         let mut command = rl.readline("$ ").unwrap();
         command = command.trim_end().to_string();
@@ -160,7 +180,7 @@ fn main() {
             "echo" => builtin_redirect(cmd, args),
             "pwd" => println!("{}", env::current_dir().unwrap().display()),
             "cd" => change_directory(args),
-            "complete" => completion_command(cmd, args, &mut complete_map),
+            "complete" => completion_command(cmd, args),
             "type" => match args {
                 "type" | "echo" | "exit" | "pwd" | "cd" | "complete" => {
                     println!("{} is a shell builtin", args)
@@ -177,13 +197,16 @@ fn main() {
         }
     }
 
-    fn completion_command(cmd: &str, args: &str, complete_map: &mut HashMap<String, String>) {
+    fn completion_command(cmd: &str, args: &str) {
         let params: Vec<&str> = args.split_whitespace().collect();
 
         match params[0] {
-            "-C" => complete_map.insert(params[2].to_string(), params[1].to_string()),
+            "-C" => COMPLETE_MAP
+                .lock()
+                .unwrap()
+                .insert(params[2].to_string(), params[1].to_string()),
             "-p" => {
-                match complete_map.get(params[1]) {
+                match COMPLETE_MAP.lock().unwrap().get(params[1]) {
                     Some(val) => println!("complete -C '{val}' {}", params[1]),
                     None => println!("complete: {}: no completion specification", params[1]),
                 };

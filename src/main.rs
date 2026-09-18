@@ -1,6 +1,7 @@
 #[allow(unused_imports)]
 use std::io::{self, Write};
 use std::{
+    collections::HashMap,
     env,
     fs::{self, File, FileType, OpenOptions},
     os::unix::fs::PermissionsExt,
@@ -144,6 +145,7 @@ fn main() {
         .build();
     let mut rl = rustyline::Editor::with_config(config).unwrap();
     rl.set_helper(Some(ShellCompleter));
+    let mut complete_map: HashMap<String, String> = HashMap::new();
     loop {
         let mut command = rl.readline("$ ").unwrap();
         command = command.trim_end().to_string();
@@ -158,7 +160,7 @@ fn main() {
             "echo" => builtin_redirect(cmd, args),
             "pwd" => println!("{}", env::current_dir().unwrap().display()),
             "cd" => change_directory(args),
-            "complete" => completion_command(cmd, args),
+            "complete" => completion_command(cmd, args, &mut complete_map),
             "type" => match args {
                 "type" | "echo" | "exit" | "pwd" | "cd" | "complete" => {
                     println!("{} is a shell builtin", args)
@@ -175,12 +177,20 @@ fn main() {
         }
     }
 
-    fn completion_command(cmd: &str, args: &str) {
-        let (flag, command) = match args.split_once(" ") {
-            Some((flag, command)) => (flag, command),
-            None => ("", ""),
+    fn completion_command(cmd: &str, args: &str, complete_map: &mut HashMap<String, String>) {
+        let params: Vec<&str> = args.split_whitespace().collect();
+
+        match params[0] {
+            "-C" => complete_map.insert(params[2].to_string(), params[1].to_string()),
+            "-p" => {
+                match complete_map.get(params[1]) {
+                    Some(val) => println!("complete -C '{val}' {}", params[1]),
+                    None => println!("complete: {}: no completion specification", params[1]),
+                };
+                None
+            }
+            _ => None,
         };
-        println!("complete: {command}: no completion specification");
     }
 
     fn change_directory(args: &str) {
@@ -304,7 +314,7 @@ fn main() {
 
 #[test]
 fn test1() {
-    let arr = vec![1, 2, 3, 4, 5, 6];
-    let test = &arr[0..3];
-    println!("{:?}", test);
+    let text = "This   is   My";
+    let vec: Vec<&str> = text.split_whitespace().collect();
+    println!("{:?}", vec);
 }

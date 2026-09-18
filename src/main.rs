@@ -159,7 +159,9 @@ fn main() {
             "pwd" => println!("{}", env::current_dir().unwrap().display()),
             "cd" => change_directory(args),
             "type" => match args {
-                "type" | "echo" | "exit" | "pwd" | "cd" => println!("{} is a shell builtin", args),
+                "type" | "echo" | "exit" | "pwd" | "cd" | "complete" => {
+                    println!("{} is a shell builtin", args)
+                }
                 _ => match check_executable(args) {
                     Some(x) => println!("{} is {}", args, x),
                     None => println!("{}: not found", args),

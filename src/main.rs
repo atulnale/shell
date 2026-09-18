@@ -158,6 +158,7 @@ fn main() {
             "echo" => builtin_redirect(cmd, args),
             "pwd" => println!("{}", env::current_dir().unwrap().display()),
             "cd" => change_directory(args),
+            "complete" => completion_command(cmd, args),
             "type" => match args {
                 "type" | "echo" | "exit" | "pwd" | "cd" | "complete" => {
                     println!("{} is a shell builtin", args)
@@ -172,6 +173,14 @@ fn main() {
                 None => println!("{}: command not found", cmd),
             },
         }
+    }
+
+    fn completion_command(cmd: &str, args: &str) {
+        let (flag, command) = match args.split_once(" ") {
+            Some((flag, command)) => (flag, command),
+            None => ("", ""),
+        };
+        println!("complete: {command}: no completion specification");
     }
 
     fn change_directory(args: &str) {

@@ -19,6 +19,7 @@ use rustyline::{
 
 static COMPLETE_MAP: LazyLock<Mutex<HashMap<String, String>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+static BACKGROUND_COUNTER: Mutex<usize> = Mutex::new(0);
 
 #[derive(Helper, Hinter, Highlighter, Validator)]
 struct ShellCompleter;
@@ -288,6 +289,7 @@ fn main() {
 
     fn execute_program(cmd_path: &str, args: &str) {
         let mut iter = args.split_whitespace();
+        let mut is_background = false;
         let mut output_file = None;
         let mut cmd_args = Vec::new();
         let mut is_err_redirect = false;
@@ -310,6 +312,10 @@ fn main() {
             }
             cmd_args.push(arg);
         }
+        if cmd_args.last().unwrap_or(&"") == &"&" {
+            is_background = true;
+            cmd_args.remove(cmd_args.len() - 1);
+        }
         let mut cmd = Command::new(cmd_path);
         cmd.args(&cmd_args);
         if let Some(filename) = output_file {
@@ -326,7 +332,17 @@ fn main() {
                 cmd.stdout(Stdio::from(file));
             }
         }
-        cmd.status();
+        if is_background {
+            match cmd.spawn() {
+                Ok(child) => {
+                    *BACKGROUND_COUNTER.lock().unwrap() += 1;
+                    println!("[{}] {}", *BACKGROUND_COUNTER.lock().unwrap(), child.id());
+                }
+                Err(err) => {}
+            }
+        } else {
+            cmd.status();
+        }
     }
 
     fn builtin_redirect(cmd: &str, args: &str) {

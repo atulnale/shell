@@ -31,14 +31,44 @@ impl Completer for ShellCompleter {
         pos: usize,
         ctx: &rustyline::Context<'_>,
     ) -> rustyline::Result<(usize, Vec<Self::Candidate>)> {
-        let mut arr: Vec<&str> = line.split_whitespace().collect();
-        if COMPLETE_MAP.lock().unwrap().contains_key(arr[0]) && line.ends_with(" ") {
-            let script_output = execute_script(COMPLETE_MAP.lock().unwrap().get(arr[0]).unwrap());
+        let arr: Vec<&str> = line.split_whitespace().collect();
+        let mut args: Vec<&str> = Vec::new();
+        let mut pref: Vec<&str> = Vec::new();
+        let completion_script = arr
+            .first()
+            .and_then(|command| COMPLETE_MAP.lock().unwrap().get(*command).cloned());
+        if let Some(completion_script) = completion_script {
+            if arr.len() == 1 {
+                args.push("");
+                pref.push(arr[0]);
+            } else if arr.len() == 2 {
+                args.push(arr[0]);
+                args.push(arr[1]);
+                pref.push(arr[0]);
+                pref.push(arr[1]);
+            } else {
+                args.push(arr[0]);
+                args.push(arr[arr.len() - 1]);
+                args.push(arr[arr.len() - 2]);
+                pref.extend(&arr[0..arr.len() - 1]);
+            };
+            let script_output = execute_script(&completion_script, &args);
+
+            if script_output.is_empty() {
+                return Ok((pos, Vec::new()));
+            }
+
+            let replacement = if script_output == *arr.last().unwrap() {
+                format!("{} {}", pref.join(" "), script_output)
+            } else {
+                format!("{} {} ", pref.join(" "), script_output)
+            };
+
             return Ok((
                 0,
                 vec![Pair {
-                    display: script_output.clone(),
-                    replacement: format!("{} {} ", arr[0], &script_output),
+                    display: script_output,
+                    replacement,
                 }],
             ));
         }
@@ -53,8 +83,8 @@ impl Completer for ShellCompleter {
     }
 }
 
-fn execute_script(path: &str) -> String {
-    let output = Command::new(path).output().unwrap();
+fn execute_script(path: &str, args: &[&str]) -> String {
+    let output = Command::new(path).args(args).output().unwrap();
 
     String::from_utf8_lossy(&output.stdout).trim().to_string()
 }

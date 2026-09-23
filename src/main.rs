@@ -216,8 +216,9 @@ fn main() {
             "pwd" => println!("{}", env::current_dir().unwrap().display()),
             "cd" => change_directory(args),
             "complete" => completion_command(cmd, args),
+            "jobs" => handle_jobs(cmd, args),
             "type" => match args {
-                "type" | "echo" | "exit" | "pwd" | "cd" | "complete" => {
+                "type" | "echo" | "exit" | "pwd" | "cd" | "complete" | "jobs" => {
                     println!("{} is a shell builtin", args)
                 }
                 _ => match check_executable(args) {
@@ -231,7 +232,7 @@ fn main() {
             },
         }
     }
-
+    fn handle_jobs(cmd: &str, args: &str) {}
     fn completion_command(cmd: &str, args: &str) {
         let params: Vec<&str> = args.split_whitespace().collect();
 
@@ -246,7 +247,7 @@ fn main() {
                     None => println!("complete: {}: no completion specification", params[1]),
                 };
                 None
-            },
+            }
             "-r" => {
                 COMPLETE_MAP.lock().unwrap().remove(params[1]);
                 None

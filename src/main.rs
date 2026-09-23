@@ -246,6 +246,10 @@ fn main() {
                     None => println!("complete: {}: no completion specification", params[1]),
                 };
                 None
+            },
+            "-r" => {
+                COMPLETE_MAP.lock().unwrap().remove(params[1]);
+                None
             }
             _ => None,
         };

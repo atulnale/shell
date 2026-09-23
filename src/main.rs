@@ -38,6 +38,10 @@ impl Completer for ShellCompleter {
             .first()
             .and_then(|command| COMPLETE_MAP.lock().unwrap().get(*command).cloned());
         if let Some(completion_script) = completion_script {
+            unsafe {
+                env::set_var("COMP_LINE", line);
+                env::set_var("COMP_POINT", &pos.to_string());
+            }
             if arr.len() == 1 {
                 args.push("");
                 pref.push(arr[0]);

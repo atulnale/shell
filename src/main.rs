@@ -33,7 +33,6 @@ impl Completer for ShellCompleter {
     ) -> rustyline::Result<(usize, Vec<Self::Candidate>)> {
         let arr: Vec<&str> = line.split_whitespace().collect();
         let mut args: Vec<&str> = Vec::new();
-        let mut pref: Vec<&str> = Vec::new();
         let completion_script = arr
             .first()
             .and_then(|command| COMPLETE_MAP.lock().unwrap().get(*command).cloned());
@@ -42,39 +41,41 @@ impl Completer for ShellCompleter {
                 env::set_var("COMP_LINE", line);
                 env::set_var("COMP_POINT", &pos.to_string());
             }
-            if arr.len() == 1 {
-                args.push("");
-                pref.push(arr[0]);
-            } else if arr.len() == 2 {
-                args.push(arr[0]);
-                args.push(arr[1]);
-                pref.push(arr[0]);
-                pref.push(arr[1]);
+            let has_trailing_space = line.chars().last().is_some_and(char::is_whitespace);
+            let current_word = if has_trailing_space {
+                ""
             } else {
-                args.push(arr[0]);
-                args.push(arr[arr.len() - 1]);
-                args.push(arr[arr.len() - 2]);
-                pref.extend(&arr[0..arr.len() - 1]);
+                arr.last().copied().unwrap_or("")
             };
+            let previous_word = if has_trailing_space {
+                arr.last().copied().unwrap_or("")
+            } else if arr.len() >= 2 {
+                arr[arr.len() - 2]
+            } else {
+                ""
+            };
+            args.extend([arr[0], current_word, previous_word]);
             let script_output = execute_script(&completion_script, &args);
 
             if script_output.is_empty() {
                 return Ok((pos, Vec::new()));
             }
 
-            let replacement = if script_output == *arr.last().unwrap() {
-                format!("{} {}", pref.join(" "), script_output)
-            } else {
-                format!("{} {} ", pref.join(" "), script_output)
-            };
-
-            return Ok((
-                0,
-                vec![Pair {
-                    display: script_output,
+            let completion_start = pos - current_word.len();
+            let mut pairs = Vec::new();
+            for line in script_output.lines() {
+                let replacement = if line == current_word {
+                    line.to_string()
+                } else {
+                    format!("{} ", line)
+                };
+                pairs.push(Pair {
+                    display: line.to_string(),
                     replacement,
-                }],
-            ));
+                });
+            }
+
+            return Ok((completion_start, pairs));
         }
         let is_cmd_completion = !line.ends_with(" ") && arr.len() < 2;
         let mut matches = if is_cmd_completion {

@@ -19,6 +19,9 @@ use rustyline::{
 
 static COMPLETE_MAP: LazyLock<Mutex<HashMap<String, String>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+static JOBS_MAP: LazyLock<Mutex<HashMap<usize, String>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 static BACKGROUND_COUNTER: Mutex<usize> = Mutex::new(0);
 
 #[derive(Helper, Hinter, Highlighter, Validator)]
@@ -233,7 +236,11 @@ fn main() {
             },
         }
     }
-    fn handle_jobs(cmd: &str, args: &str) {}
+    fn handle_jobs(cmd: &str, args: &str) {
+        for (id, command) in JOBS_MAP.lock().unwrap().iter() {
+            println!("[{}]+ Running{}{}", id, " ".repeat(17), command);
+        }
+    }
     fn completion_command(cmd: &str, args: &str) {
         let params: Vec<&str> = args.split_whitespace().collect();
 
@@ -337,6 +344,10 @@ fn main() {
                 Ok(child) => {
                     *BACKGROUND_COUNTER.lock().unwrap() += 1;
                     println!("[{}] {}", *BACKGROUND_COUNTER.lock().unwrap(), child.id());
+                    JOBS_MAP.lock().unwrap().insert(
+                        *BACKGROUND_COUNTER.lock().unwrap(),
+                        String::from(format!("{} {}", cmd_path, args)),
+                    );
                 }
                 Err(err) => {}
             }

@@ -1,3 +1,4 @@
+use indexmap::IndexMap;
 #[allow(unused_imports)]
 use std::io::{self, Write};
 use std::{
@@ -20,8 +21,8 @@ use rustyline::{
 static COMPLETE_MAP: LazyLock<Mutex<HashMap<String, String>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-static JOBS_MAP: LazyLock<Mutex<HashMap<usize, String>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+static JOBS_MAP: LazyLock<Mutex<IndexMap<usize, String>>> =
+    LazyLock::new(|| Mutex::new(IndexMap::new()));
 static BACKGROUND_COUNTER: Mutex<usize> = Mutex::new(0);
 
 #[derive(Helper, Hinter, Highlighter, Validator)]

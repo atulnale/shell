@@ -237,8 +237,18 @@ fn main() {
         }
     }
     fn handle_jobs(cmd: &str, args: &str) {
+        let no_of_elements = JOBS_MAP.lock().unwrap().len();
+        let mut counter = 1;
         for (id, command) in JOBS_MAP.lock().unwrap().iter() {
-            println!("[{}]+ Running{}{}", id, " ".repeat(17), command);
+            let symbol = if counter == no_of_elements {
+                "+"
+            } else if counter + 1 == no_of_elements {
+                "-"
+            } else {
+                " "
+            };
+            println!("[{}]{}  Running{}{}", id, symbol, " ".repeat(17), command);
+            counter += 1;
         }
     }
     fn completion_command(cmd: &str, args: &str) {

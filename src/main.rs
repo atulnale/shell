@@ -8,7 +8,7 @@ use std::{
     fs::{self, File, FileType, OpenOptions},
     os::unix::fs::PermissionsExt,
     path::Path,
-    process::{Command, Stdio},
+    process::{Child, Command, Stdio},
     sync::{LazyLock, Mutex},
 };
 
@@ -18,10 +18,15 @@ use rustyline::{
     error::ReadlineError,
 };
 
+struct BackgroundProcess {
+    child: Child,
+    command: String,
+}
+
 static COMPLETE_MAP: LazyLock<Mutex<HashMap<String, String>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-static JOBS_MAP: LazyLock<Mutex<IndexMap<usize, String>>> =
+static JOBS_MAP: LazyLock<Mutex<IndexMap<usize, BackgroundProcess>>> =
     LazyLock::new(|| Mutex::new(IndexMap::new()));
 static BACKGROUND_COUNTER: Mutex<usize> = Mutex::new(0);
 
@@ -240,7 +245,8 @@ fn main() {
     fn handle_jobs(cmd: &str, args: &str) {
         let no_of_elements = JOBS_MAP.lock().unwrap().len();
         let mut counter = 1;
-        for (id, command) in JOBS_MAP.lock().unwrap().iter() {
+        let mut done_jobs = Vec::new();
+        for (id, bg_process) in JOBS_MAP.lock().unwrap().iter_mut() {
             let symbol = if counter == no_of_elements {
                 "+"
             } else if counter + 1 == no_of_elements {
@@ -248,8 +254,28 @@ fn main() {
             } else {
                 " "
             };
-            println!("[{}]{}  Running{}{}", id, symbol, " ".repeat(17), command);
+            let status = match bg_process.child.try_wait() {
+                Ok(Some(_)) => {
+                    done_jobs.push(*id);
+                    "Done"
+                }
+                Ok(None) => "Running",
+                Err(_) => "Running",
+            };
+
+            println!(
+                "[{}]{}  {}{}{}",
+                id,
+                symbol,
+                status,
+                " ".repeat(24 - status.len()),
+                bg_process.command
+            );
+
             counter += 1;
+        }
+        for id in done_jobs {
+            JOBS_MAP.lock().unwrap().swap_remove(&id);
         }
     }
     fn completion_command(cmd: &str, args: &str) {
@@ -357,7 +383,10 @@ fn main() {
                     println!("[{}] {}", *BACKGROUND_COUNTER.lock().unwrap(), child.id());
                     JOBS_MAP.lock().unwrap().insert(
                         *BACKGROUND_COUNTER.lock().unwrap(),
-                        String::from(format!("{} {}", cmd_path, args)),
+                        BackgroundProcess {
+                            child,
+                            command: format!("{} {}", cmd_path, cmd_args.join(" ")),
+                        },
                     );
                 }
                 Err(err) => {}

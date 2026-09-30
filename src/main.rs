@@ -26,7 +26,6 @@ static COMPLETE_MAP: LazyLock<Mutex<HashMap<String, String>>> =
 
 static JOBS_MAP: LazyLock<Mutex<IndexMap<usize, BackgroundProcess>>> =
     LazyLock::new(|| Mutex::new(IndexMap::new()));
-static BACKGROUND_COUNTER: Mutex<usize> = Mutex::new(0);
 
 #[derive(Helper, Hinter, Highlighter, Validator)]
 struct ShellCompleter;
@@ -377,10 +376,10 @@ fn main() {
         if is_background {
             match cmd.spawn() {
                 Ok(child) => {
-                    *BACKGROUND_COUNTER.lock().unwrap() += 1;
-                    println!("[{}] {}", *BACKGROUND_COUNTER.lock().unwrap(), child.id());
+                    let id = JOBS_MAP.lock().unwrap().len() + 1;
+                    println!("[{}] {}", id, child.id());
                     JOBS_MAP.lock().unwrap().insert(
-                        *BACKGROUND_COUNTER.lock().unwrap(),
+                        id,
                         BackgroundProcess {
                             child,
                             command: format!("{} {}", cmd_path, cmd_args.join(" ")),

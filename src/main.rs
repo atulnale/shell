@@ -4,8 +4,7 @@ use std::io::{self, Write};
 use std::{
     collections::HashMap,
     env,
-    fmt::format,
-    fs::{self, File, FileType, OpenOptions},
+    fs::{self, OpenOptions},
     os::unix::fs::PermissionsExt,
     path::Path,
     process::{Child, Command, Stdio},
@@ -13,9 +12,8 @@ use std::{
 };
 
 use rustyline::{
-    CompletionType, Config, Context, Editor, Helper, Highlighter, Hinter, Validator,
+    CompletionType, Config, Helper, Highlighter, Hinter, Validator,
     completion::{Completer, Pair},
-    error::ReadlineError,
 };
 
 struct BackgroundProcess {
@@ -39,7 +37,7 @@ impl Completer for ShellCompleter {
         &self,
         line: &str,
         pos: usize,
-        ctx: &rustyline::Context<'_>,
+        _ctx: &rustyline::Context<'_>,
     ) -> rustyline::Result<(usize, Vec<Self::Candidate>)> {
         let arr: Vec<&str> = line.split_whitespace().collect();
         let mut args: Vec<&str> = Vec::new();
@@ -49,7 +47,7 @@ impl Completer for ShellCompleter {
         if let Some(completion_script) = completion_script {
             unsafe {
                 env::set_var("COMP_LINE", line);
-                env::set_var("COMP_POINT", &pos.to_string());
+                env::set_var("COMP_POINT", pos.to_string());
             }
             let has_trailing_space = line.chars().last().is_some_and(char::is_whitespace);
             let current_word = if has_trailing_space {
@@ -140,13 +138,13 @@ fn file_completion(line: &[&str]) -> Vec<Pair> {
         };
         if metadata.is_file() {
             matches.push(Pair {
-                display: format!("{} ", name.to_string()),
-                replacement: format!("{} {}{} ", search_prefix, path_pref, name.to_string()),
+                display: format!("{} ", name),
+                replacement: format!("{} {}{} ", search_prefix, path_pref, name),
             })
         } else if metadata.is_dir() {
             matches.push(Pair {
-                display: format!("{}/ ", name.to_string()),
-                replacement: format!("{} {}{}/", search_prefix, path_pref, name.to_string()),
+                display: format!("{}/ ", name),
+                replacement: format!("{} {}{}/", search_prefix, path_pref, name),
             })
         }
     }
@@ -155,7 +153,7 @@ fn file_completion(line: &[&str]) -> Vec<Pair> {
 }
 
 fn command_completion(line: &str) -> Vec<Pair> {
-    let supported_commands = vec!["echo ", "exit "];
+    let supported_commands = ["echo ", "exit "];
     let mut matches: Vec<Pair> = supported_commands
         .iter()
         .filter(|command| command.starts_with(line))
@@ -191,13 +189,11 @@ fn command_completion(line: &str) -> Vec<Pair> {
                 Err(_) => continue,
             };
 
-            if metadata.is_file() {
-                if metadata.permissions().mode() & 0o111 != 0 {
-                    matches.push(Pair {
-                        display: format!("{} ", name.to_string()),
-                        replacement: format!("{} ", name.to_string()),
-                    })
-                }
+            if metadata.is_file() && metadata.permissions().mode() & 0o111 != 0 {
+                matches.push(Pair {
+                    display: format!("{} ", name),
+                    replacement: format!("{} ", name),
+                })
             }
         }
     }
@@ -205,16 +201,16 @@ fn command_completion(line: &str) -> Vec<Pair> {
 }
 
 fn main() {
-    let BUILTIN_COMMANDS = vec!["type", "echo", "exit", "pwd", "cd"];
     let config = Config::builder()
         .completion_type(CompletionType::List)
         .build();
     let mut rl = rustyline::Editor::with_config(config).unwrap();
     rl.set_helper(Some(ShellCompleter));
     loop {
+        handle_jobs(true);
         let mut command = rl.readline("$ ").unwrap();
         command = command.trim_end().to_string();
-        if command == "" {
+        if command.is_empty() {
             continue;
         }
         let mut parse = command.splitn(2, char::is_whitespace);
@@ -226,7 +222,7 @@ fn main() {
             "pwd" => println!("{}", env::current_dir().unwrap().display()),
             "cd" => change_directory(args),
             "complete" => completion_command(cmd, args),
-            "jobs" => handle_jobs(cmd, args),
+            "jobs" => handle_jobs(false),
             "type" => match args {
                 "type" | "echo" | "exit" | "pwd" | "cd" | "complete" | "jobs" => {
                     println!("{} is a shell builtin", args)
@@ -237,16 +233,15 @@ fn main() {
                 },
             },
             _ => match check_executable(cmd) {
-                Some(path) => execute_program(cmd, args),
+                Some(_) => execute_program(cmd, args),
                 None => println!("{}: command not found", cmd),
             },
         }
     }
-    fn handle_jobs(cmd: &str, args: &str) {
+    fn handle_jobs(auto: bool) {
         let no_of_elements = JOBS_MAP.lock().unwrap().len();
-        let mut counter = 1;
         let mut done_jobs = Vec::new();
-        for (id, bg_process) in JOBS_MAP.lock().unwrap().iter_mut() {
+        for (counter, (id, bg_process)) in (1..).zip(JOBS_MAP.lock().unwrap().iter_mut()) {
             let symbol = if counter == no_of_elements {
                 "+"
             } else if counter + 1 == no_of_elements {
@@ -254,15 +249,19 @@ fn main() {
             } else {
                 " "
             };
+            let mut completed = false;
             let status = match bg_process.child.try_wait() {
                 Ok(Some(_)) => {
                     done_jobs.push(*id);
+                    completed = true;
                     "Done"
                 }
                 Ok(None) => "Running",
                 Err(_) => "Running",
             };
-
+            if !completed && auto {
+                continue;
+            }
             println!(
                 "[{}]{}  {}{}{}",
                 id,
@@ -271,14 +270,13 @@ fn main() {
                 " ".repeat(24 - status.len()),
                 bg_process.command
             );
-
-            counter += 1;
         }
         for id in done_jobs {
             JOBS_MAP.lock().unwrap().swap_remove(&id);
         }
     }
-    fn completion_command(cmd: &str, args: &str) {
+
+    fn completion_command(_cmd: &str, args: &str) {
         let params: Vec<&str> = args.split_whitespace().collect();
 
         match params[0] {
@@ -389,14 +387,14 @@ fn main() {
                         },
                     );
                 }
-                Err(err) => {}
+                Err(_err) => {}
             }
         } else {
-            cmd.status();
+            let _result = cmd.status();
         }
     }
 
-    fn builtin_redirect(cmd: &str, args: &str) {
+    fn builtin_redirect(_cmd: &str, args: &str) {
         let mut output: Box<dyn Write> = Box::new(io::stdout());
         let (output_file, cmd_args, is_err_redirect, append) = rediret_filename(args);
         if let Some(filename) = output_file {
@@ -411,7 +409,7 @@ fn main() {
                 output = Box::new(file);
             }
         }
-        write!(output, "{}\n", cmd_args.join(" ")).unwrap();
+        writeln!(output, "{}", cmd_args.join(" ")).unwrap();
     }
 
     fn rediret_filename(args: &str) -> (Option<&str>, Vec<&str>, bool, bool) {

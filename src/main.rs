@@ -21,6 +21,17 @@ struct BackgroundProcess {
     command: String,
 }
 
+enum RedirectTarget<'a> {
+    Stdout { filename: &'a str, append: bool },
+    Stderr { filename: &'a str, append: bool },
+}
+
+struct ParsedCommand<'a> {
+    args: Vec<&'a str>,
+    redirect: Option<RedirectTarget<'a>>,
+    background: bool,
+}
+
 static COMPLETE_MAP: LazyLock<Mutex<HashMap<String, String>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
@@ -232,7 +243,11 @@ fn main() {
                 },
             },
             _ => match check_executable(cmd) {
-                Some(_) => execute_program(cmd, args),
+                Some(_) => {
+                    if let Err(err) = execute_program(cmd, args) {
+                        eprint!("Error: {err}");
+                    }
+                }
                 None => println!("{}: command not found", cmd),
             },
         }
@@ -328,69 +343,153 @@ fn main() {
         None
     }
 
-    fn execute_program(cmd_path: &str, args: &str) {
-        let mut iter = args.split_whitespace();
-        let mut is_background = false;
-        let mut output_file = None;
-        let mut cmd_args = Vec::new();
-        let mut is_err_redirect = false;
-        let mut append = false;
-        while let Some(arg) = iter.next() {
-            if arg == ">" || arg == "1>" || arg == ">>" || arg == "1>>" {
-                if arg == ">>" || arg == "1>>" {
-                    append = true;
-                }
-                output_file = iter.next();
-                break;
-            }
-            if arg == "2>" || arg == "2>>" {
-                if arg == "2>>" {
-                    append = true;
-                }
-                is_err_redirect = true;
-                output_file = iter.next();
-                break;
-            }
-            cmd_args.push(arg);
+    fn execute_pipeline(first_cmd_path: &str, args: &str) -> io::Result<()> {
+        let (first_args, second_cmd) = args
+            .split_once("|")
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Expected a pipe"))?;
+        let mut second_parts = second_cmd.split_whitespace();
+        let second_cmd_path = second_parts.next().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidInput, "Missing command after pipe")
+        })?;
+
+        let second_cmd_args: Vec<&str> = second_parts.collect();
+        let mut first = Command::new(first_cmd_path)
+            .args(first_args.split_whitespace())
+            .stdout(Stdio::piped())
+            .spawn()?;
+        let pipe = first
+            .stdout
+            .take()
+            .ok_or_else(|| io::Error::other("Failed to obtain pipeline stdout"))?;
+
+        let mut second = Command::new(second_cmd_path)
+            .args(second_cmd_args)
+            .stdin(Stdio::from(pipe))
+            .spawn()?;
+
+        let second_status = second.wait()?;
+        let _first_status = first.wait()?;
+
+        // Return an error if the second command could not succeed.
+        if !second_status.success() {
+            eprintln!("Pipeline's second command exited with {second_status}");
         }
-        if cmd_args.last().unwrap_or(&"") == &"&" {
-            is_background = true;
-            cmd_args.remove(cmd_args.len() - 1);
+        Ok(())
+    }
+
+    fn execute_program(cmd_path: &str, args: &str) -> io::Result<()> {
+        if args.contains("|") {
+            return execute_pipeline(cmd_path, args);
         }
+        let parsed =
+            parse_args(args).map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
+
+        let ParsedCommand {
+            args: cmd_args,
+            redirect,
+            background,
+        } = parsed;
         let mut cmd = Command::new(cmd_path);
         cmd.args(&cmd_args);
-        if let Some(filename) = output_file {
-            let file = OpenOptions::new()
-                .create(true)
-                .write(true)
-                .append(append)
-                .truncate(!append)
-                .open(filename)
-                .expect("Can't create file");
-            if is_err_redirect {
-                cmd.stderr(Stdio::from(file));
-            } else {
-                cmd.stdout(Stdio::from(file));
-            }
-        }
-        if is_background {
-            match cmd.spawn() {
-                Ok(child) => {
-                    let id = JOBS_MAP.lock().unwrap().len() + 1;
-                    println!("[{}] {}", id, child.id());
-                    JOBS_MAP.lock().unwrap().insert(
-                        id,
-                        BackgroundProcess {
-                            child,
-                            command: format!("{} {}", cmd_path, cmd_args.join(" ")),
-                        },
-                    );
-                }
-                Err(_err) => {}
-            }
+
+        apply_redirection(&mut cmd, redirect)?;
+
+        if background {
+            let child = cmd.spawn()?;
+            let pid = child.id();
+            let command = format!("{} {}", cmd_path, cmd_args.join(" "));
+            let mut jobs = JOBS_MAP.lock().unwrap();
+            let id = jobs.len() + 1;
+
+            println!("[{}] {}", id, pid);
+            jobs.insert(id, BackgroundProcess { child, command });
         } else {
-            let _result = cmd.status();
+            cmd.status()?;
         }
+
+        Ok(())
+    }
+
+    fn parse_args(args: &str) -> Result<ParsedCommand<'_>, String> {
+        let mut tokens: Vec<&str> = args.split_whitespace().collect();
+
+        let background = tokens.last() == Some(&"&");
+
+        if background {
+            tokens.pop();
+        }
+
+        let mut cmd_args = Vec::new();
+        let mut redirect = None;
+        let mut iter = tokens.into_iter();
+
+        while let Some(arg) = iter.next() {
+            let redirect_target = match arg {
+                ">" | "1>" => Some((false, false)),
+                ">>" | "1>>" => Some((false, true)),
+                "2>" => Some((true, false)),
+                "2>>" => Some((true, true)),
+                "|" => {
+                    return Err("Pipelines are not supported by this parser yet".into());
+                }
+                _ => None,
+            };
+
+            if let Some((is_stderr, append)) = redirect_target {
+                if redirect.is_some() {
+                    return Err("Multiple redirections are not supported yet".into());
+                }
+
+                let filename = iter
+                    .next()
+                    .ok_or_else(|| format!("Missing filename after '{}'", arg))?;
+
+                redirect = Some(if is_stderr {
+                    RedirectTarget::Stderr { filename, append }
+                } else {
+                    RedirectTarget::Stdout { filename, append }
+                });
+
+                continue;
+            }
+
+            cmd_args.push(arg);
+        }
+
+        Ok(ParsedCommand {
+            args: cmd_args,
+            redirect,
+            background,
+        })
+    }
+
+    fn apply_redirection(
+        cmd: &mut Command,
+        redirect: Option<RedirectTarget<'_>>,
+    ) -> io::Result<()> {
+        let Some(redirect) = redirect else {
+            return Ok(());
+        };
+        let (filename, append, is_stderr) = match redirect {
+            RedirectTarget::Stderr { filename, append } => (filename, append, true),
+            RedirectTarget::Stdout { filename, append } => (filename, append, false),
+        };
+        let mut options = OpenOptions::new();
+        options.write(true).create(true);
+
+        if append {
+            options.append(true);
+        } else {
+            options.truncate(true);
+        }
+
+        let file = options.open(filename)?;
+        if is_stderr {
+            cmd.stderr(Stdio::from(file));
+        } else {
+            cmd.stdout(Stdio::from(file));
+        }
+        Ok(())
     }
 
     fn builtin_redirect(_cmd: &str, args: &str) {

@@ -1,4 +1,5 @@
 use indexmap::IndexMap;
+use rustyline::history::FileHistory;
 use std::fs::File;
 #[allow(unused_imports)]
 use std::io::{self, Write};
@@ -223,7 +224,10 @@ fn main() {
     let mut rl = rustyline::Editor::with_config(config).unwrap();
     rl.set_helper(Some(ShellCompleter));
     loop {
-        handle_jobs(true);
+        if let Err(error) = handle_startup(&mut rl) {
+            println!("Error: {error}");
+        }
+
         let mut command = rl.readline("$ ").unwrap();
         command = command.trim_end().to_string();
         if command.is_empty() {
@@ -273,7 +277,20 @@ fn main() {
             },
         }
     }
-
+    fn handle_startup(rl: &mut rustyline::Editor<ShellCompleter, FileHistory>) -> io::Result<()> {
+        handle_jobs(true);
+        if let Some(histfile) = env::var("HISTFILE").ok() {
+            read_history(&histfile);
+            let history = {
+                let history = HISTORY.lock().unwrap();
+                history.clone()
+            };
+            for hist in history {
+                rl.add_history_entry(hist);
+            }
+        }
+        Ok(())
+    }
     fn read_history(path: &str) -> io::Result<()> {
         let file = File::open(path)?;
         let reader = BufReader::new(file);

@@ -1,6 +1,7 @@
 use indexmap::IndexMap;
 #[allow(unused_imports)]
 use std::io::{self, Write};
+use std::os::unix::process::ExitStatusExt;
 use std::{
     collections::HashMap,
     env,
@@ -223,6 +224,12 @@ fn main() {
         if command.is_empty() {
             continue;
         }
+        if command.contains('|') {
+            if let Err(err) = execute_pipeline_line(&command) {
+                eprintln!("Error: {err}");
+            }
+            continue;
+        }
         let mut parse = command.splitn(2, char::is_whitespace);
         let cmd = parse.next().unwrap();
         let args = parse.next().unwrap_or("").trim_start();
@@ -252,6 +259,169 @@ fn main() {
             },
         }
     }
+
+    fn builtin_pipeline_output(cmd: &str, args: &[&str]) -> io::Result<Option<Vec<u8>>> {
+        let mut output = Vec::new();
+        match cmd {
+            "echo" => {
+                writeln!(&mut output, "{}", args.join(" "))?;
+            }
+            "pwd" => {
+                writeln!(&mut output, "{}", env::current_dir()?.display())?;
+            }
+            "type" => match args[0] {
+                "type" | "echo" | "exit" | "pwd" | "cd" | "complete" | "jobs" => {
+                    writeln!(&mut output, "{} is a shell builtin", args[0])?;
+                }
+                _ => match check_executable(args[0]) {
+                    Some(x) => {
+                        writeln!(&mut output, "{} is {}", args[0], x)?;
+                    }
+                    None => {
+                        writeln!(&mut output, "{}: not found", args[0])?;
+                    }
+                },
+            },
+            _ => return Ok(None),
+        }
+        Ok(Some(output))
+    }
+
+    fn execute_pipeline_line(line: &str) -> io::Result<()> {
+        let stages: Vec<&str> = line.split('|').map(str::trim).collect();
+
+        if stages.len() < 2 || stages.iter().any(|stage| stage.is_empty()) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Invalid pipeline",
+            ));
+        }
+
+        // Parse the first command.
+        let mut first_parts = stages[0].split_whitespace();
+        let first_name = first_parts
+            .next()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Missing command"))?;
+        let first_args: Vec<&str> = first_parts.collect();
+
+        // Built-ins are supported as the first pipeline stage.
+        // Their output is buffered and fed to the next process.
+        let builtin_output = builtin_pipeline_output(first_name, &first_args)?;
+
+        let builtin_first = builtin_output.is_some();
+        let start_index = if builtin_first { 1 } else { 0 };
+
+        let mut children: Vec<Child> = Vec::new();
+        let mut previous_stdout = None;
+        let mut builtin_stdin = None;
+
+        // Spawn every external stage before writing buffered built-in output.
+        // This allows downstream processes to consume data while it is written.
+        for (index, stage) in stages.iter().enumerate().skip(start_index) {
+            let mut parts = stage.split_whitespace();
+
+            let name = parts.next().ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidInput, "Missing command in pipeline")
+            })?;
+
+            let args: Vec<&str> = parts.collect();
+
+            // For this version, built-ins are supported only as the first stage.
+            let is_last = index == stages.len() - 1;
+
+            if ["echo", "pwd", "type"].contains(&name) && is_last {
+                let output = builtin_pipeline_output(name, &args)?
+                    .ok_or_else(|| io::Error::other("Failed to execute pipeline builtin"))?;
+
+                // This builtin doesn't consume upstream stdin.
+                // Close the pipe reader so the upstream process won't block forever.
+                drop(previous_stdout.take());
+
+                io::stdout().write_all(&output)?;
+                continue;
+            }
+
+            if ["echo", "type", "cd"].contains(&name) {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("Built-in '{name}' is only supported as the first pipeline command"),
+                ));
+            }
+
+            let path = check_executable(name).ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("{name}: command not found"),
+                )
+            })?;
+
+            let is_last = index == stages.len() - 1;
+
+            let mut command = Command::new(path);
+            command.args(&args);
+
+            if builtin_first && index == start_index {
+                // Feed the built-in's buffered output into the first process.
+                command.stdin(Stdio::piped());
+            } else if let Some(stdout) = previous_stdout.take() {
+                // Connect the preceding process to this process.
+                command.stdin(Stdio::from(stdout));
+            } else if index != 0 {
+                return Err(io::Error::other("Missing pipe from previous command"));
+            }
+
+            if !is_last {
+                command.stdout(Stdio::piped());
+            }
+            // The final command inherits stdout, so output reaches the terminal.
+
+            let mut child = command.spawn()?;
+
+            if builtin_first && index == start_index {
+                builtin_stdin = child.stdin.take();
+            }
+
+            if !is_last {
+                previous_stdout = Some(
+                    child
+                        .stdout
+                        .take()
+                        .ok_or_else(|| io::Error::other("Failed to obtain pipeline stdout"))?,
+                );
+            }
+
+            children.push(child);
+        }
+
+        // Write the built-in's output after downstream processes have started.
+        if let Some(output) = builtin_output {
+            if let Some(mut stdin) = builtin_stdin {
+                if let Err(err) = stdin.write_all(&output) {
+                    if err.kind() != io::ErrorKind::BrokenPipe {
+                        return Err(err);
+                    }
+                }
+                // stdin is dropped here, signalling EOF to the receiving command.
+            }
+        }
+
+        // Reap every child process.
+        let mut last_status = None;
+
+        for mut child in children {
+            let status = child.wait()?;
+            last_status = Some(status);
+        }
+
+        if let Some(status) = last_status {
+            if !status.success() && status.signal() != Some(13) {
+                eprintln!("Pipeline command exited with {status}");
+            }
+        }
+
+        Ok(())
+    }
+
     fn handle_jobs(auto: bool) {
         let no_of_elements = JOBS_MAP.lock().unwrap().len();
         let mut done_jobs = Vec::new();

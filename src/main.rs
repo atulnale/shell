@@ -273,15 +273,17 @@ fn main() {
         let limit: usize = if args.is_empty() {
             history.len()
         } else {
-            args.parse().unwrap()
+            args.parse::<usize>().map_err(|err| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("invalid history limit: {err}"),
+                )
+            })?
         };
+        let skip = history.len().saturating_sub(limit);
         let stdout = io::stdout();
         let mut out = stdout.lock();
-        let skip = if limit > history.len() {
-            0
-        } else {
-            history.len() - limit
-        };
+        
         for (i, cmd) in history.iter().enumerate().skip(skip) {
             writeln!(out, "{} {}", i + 1, cmd)?;
         }

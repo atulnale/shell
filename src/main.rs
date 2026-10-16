@@ -1,5 +1,4 @@
 use indexmap::IndexMap;
-use rustyline::history;
 #[allow(unused_imports)]
 use std::io::{self, Write};
 use std::os::unix::process::ExitStatusExt;
@@ -227,6 +226,9 @@ fn main() {
             continue;
         }
         HISTORY.lock().unwrap().push(command.clone());
+        if let Err(err) = rl.add_history_entry(command.clone()) {
+            eprintln!("Error: {err}");
+        }
         if command.contains('|') {
             if let Err(err) = execute_pipeline_line(&command) {
                 eprintln!("Error: {err}");
@@ -283,7 +285,7 @@ fn main() {
         let skip = history.len().saturating_sub(limit);
         let stdout = io::stdout();
         let mut out = stdout.lock();
-        
+
         for (i, cmd) in history.iter().enumerate().skip(skip) {
             writeln!(out, "{} {}", i + 1, cmd)?;
         }

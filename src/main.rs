@@ -1,7 +1,10 @@
 use indexmap::IndexMap;
+use std::fs::File;
 #[allow(unused_imports)]
 use std::io::{self, Write};
+use std::io::{BufRead, BufReader};
 use std::os::unix::process::ExitStatusExt;
+use std::usize;
 use std::{
     collections::HashMap,
     env,
@@ -270,18 +273,52 @@ fn main() {
         }
     }
 
+    fn read_history(path: &str) -> io::Result<()> {
+        let file = File::open(path)?;
+        let reader = BufReader::new(file);
+        let mut history = HISTORY.lock().unwrap();
+        for line in reader.lines() {
+            let line = line?;
+            history.push(line);
+        }
+        Ok(())
+    }
     fn handle_history(args: &str) -> io::Result<()> {
+        let mut parts = args.split_whitespace();
+        match parts.next() {
+            Some("-r") => {
+                let path = parts
+                    .next()
+                    .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, ""))?;
+                if parts.next().is_some() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "unexpected extra arguments for history -r",
+                    ));
+                }
+                read_history(path)
+            }
+            Some(limit) => {
+                if parts.next().is_some() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "unexpected history arguments",
+                    ));
+                }
+                let limit = limit.parse::<usize>().map_err(|err| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!("invalid history limit: {err}"),
+                    )
+                })?;
+                print_history(limit)
+            }
+            None => print_history(usize::MAX),
+        }
+    }
+    fn print_history(limit: usize) -> io::Result<()> {
         let history = HISTORY.lock().unwrap();
-        let limit: usize = if args.is_empty() {
-            history.len()
-        } else {
-            args.parse::<usize>().map_err(|err| {
-                io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    format!("invalid history limit: {err}"),
-                )
-            })?
-        };
+
         let skip = history.len().saturating_sub(limit);
         let stdout = io::stdout();
         let mut out = stdout.lock();

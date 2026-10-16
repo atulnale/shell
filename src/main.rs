@@ -42,6 +42,7 @@ static COMPLETE_MAP: LazyLock<Mutex<HashMap<String, String>>> =
 static JOBS_MAP: LazyLock<Mutex<IndexMap<usize, BackgroundProcess>>> =
     LazyLock::new(|| Mutex::new(IndexMap::new()));
 static HISTORY: LazyLock<Mutex<Vec<String>>> = LazyLock::new(|| Mutex::new(Vec::new()));
+static HISTORY_APPEND_COUNTER: LazyLock<Mutex<usize>> = LazyLock::new(|| Mutex::new(0));
 
 #[derive(Helper, Hinter, Highlighter, Validator)]
 struct ShellCompleter;
@@ -283,16 +284,23 @@ fn main() {
         }
         Ok(())
     }
-    fn write_history(path: &str) -> io::Result<()> {
-        let file = File::create(path)?;
+    fn write_history(path: &str, truncate: bool, append: bool, skip: usize) -> io::Result<()> {
+        let file = OpenOptions::new()
+            .create(true)
+            .append(append)
+            .truncate(truncate)
+            .write(true)
+            .open(path)?;
         let mut writer = BufWriter::new(file);
         let history = {
             let history = HISTORY.lock().unwrap();
             history.clone()
         };
-        for line in history.iter() {
+        for line in history.iter().skip(skip) {
             writeln!(writer, "{line}")?;
         }
+        writer.flush()?;
+
         Ok(())
     }
     fn handle_history(args: &str) -> io::Result<()> {
@@ -320,7 +328,19 @@ fn main() {
                         "expected file path to write history to",
                     )
                 })?;
-                write_history(path)
+                write_history(path, true, false, 0)
+            }
+            Some("-a") => {
+                let path = parts.next().ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "expected file path to write history to",
+                    )
+                })?;
+                let mut counter = HISTORY_APPEND_COUNTER.lock().unwrap();
+                let skip = *counter;
+                *counter = HISTORY.lock().unwrap().len();
+                write_history(path, false, true, skip)
             }
             Some(limit) => {
                 if parts.next().is_some() {

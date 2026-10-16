@@ -1,0 +1,26 @@
+echo pb
+echo ps
+echo spp
+echo go
+echo gsb
+history -a strawberry.txt
+echo pb
+echo ps
+echo spp
+echo go
+echo gsb
+history -a strawberry.txt
+echo go
+echo gsb
+history -a strawberry.txt
+echo pb
+echo ps
+echo spp
+echo go
+echo gsb
+history -a strawberry.txt
+echo go
+echo gsb
+history -a strawberry.txt
+echo mba
+history -a strawberry.txt

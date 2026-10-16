@@ -244,7 +244,7 @@ fn main() {
             "complete" => completion_command(cmd, args),
             "jobs" => handle_jobs(false),
             "history" => {
-                if let Err(err) = handle_history() {
+                if let Err(err) = handle_history(args) {
                     eprintln!("Error displaying history: {err}");
                 }
             }
@@ -268,11 +268,21 @@ fn main() {
         }
     }
 
-    fn handle_history() -> io::Result<()> {
+    fn handle_history(args: &str) -> io::Result<()> {
         let history = HISTORY.lock().unwrap();
+        let limit: usize = if args.is_empty() {
+            history.len()
+        } else {
+            args.parse().unwrap()
+        };
         let stdout = io::stdout();
         let mut out = stdout.lock();
-        for (i, cmd) in history.iter().enumerate() {
+        let skip = if limit > history.len() {
+            0
+        } else {
+            history.len() - limit
+        };
+        for (i, cmd) in history.iter().enumerate().skip(skip) {
             writeln!(out, "{} {}", i + 1, cmd)?;
         }
         Ok(())

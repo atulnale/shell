@@ -247,7 +247,10 @@ fn main() {
         let cmd = parse.next().unwrap();
         let args = parse.next().unwrap_or("").trim_start();
         match cmd {
-            "exit" => break,
+            "exit" => {
+                handle_exit(&mut rl);
+                break;
+            }
             "echo" => builtin_redirect(cmd, args),
             "pwd" => println!("{}", env::current_dir().unwrap().display()),
             "cd" => change_directory(args),
@@ -290,6 +293,13 @@ fn main() {
             }
         }
         Ok(())
+    }
+    fn handle_exit(rl: &mut rustyline::Editor<ShellCompleter, FileHistory>) {
+        if let Ok(histfile) = env::var("HISTFILE") {
+            if let Err(err) = write_history(&histfile, false, true, 0) {
+                eprintln!("Error: {err}");
+            }
+        }
     }
     fn read_history(path: &str) -> io::Result<()> {
         let file = File::open(path)?;

@@ -1,4 +1,5 @@
 use indexmap::IndexMap;
+use rustyline::history;
 #[allow(unused_imports)]
 use std::io::{self, Write};
 use std::os::unix::process::ExitStatusExt;
@@ -38,6 +39,7 @@ static COMPLETE_MAP: LazyLock<Mutex<HashMap<String, String>>> =
 
 static JOBS_MAP: LazyLock<Mutex<IndexMap<usize, BackgroundProcess>>> =
     LazyLock::new(|| Mutex::new(IndexMap::new()));
+static HISTORY: LazyLock<Mutex<Vec<String>>> = LazyLock::new(|| Mutex::new(Vec::new()));
 
 #[derive(Helper, Hinter, Highlighter, Validator)]
 struct ShellCompleter;
@@ -224,6 +226,7 @@ fn main() {
         if command.is_empty() {
             continue;
         }
+        HISTORY.lock().unwrap().push(command.clone());
         if command.contains('|') {
             if let Err(err) = execute_pipeline_line(&command) {
                 eprintln!("Error: {err}");
@@ -240,6 +243,11 @@ fn main() {
             "cd" => change_directory(args),
             "complete" => completion_command(cmd, args),
             "jobs" => handle_jobs(false),
+            "history" => {
+                if let Err(err) = handle_history() {
+                    eprintln!("Error displaying history: {err}");
+                }
+            }
             "type" => match args {
                 "type" | "echo" | "exit" | "pwd" | "cd" | "complete" | "jobs" | "history" => {
                     println!("{} is a shell builtin", args)
@@ -258,6 +266,16 @@ fn main() {
                 None => println!("{}: command not found", cmd),
             },
         }
+    }
+
+    fn handle_history() -> io::Result<()> {
+        let history = HISTORY.lock().unwrap();
+        let stdout = io::stdout();
+        let mut out = stdout.lock();
+        for (i, cmd) in history.iter().enumerate() {
+            writeln!(out, "{} {}", i + 1, cmd)?;
+        }
+        Ok(())
     }
 
     fn builtin_pipeline_output(cmd: &str, args: &[&str]) -> io::Result<Option<Vec<u8>>> {

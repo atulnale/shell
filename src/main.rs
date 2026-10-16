@@ -2,7 +2,7 @@ use indexmap::IndexMap;
 use std::fs::File;
 #[allow(unused_imports)]
 use std::io::{self, Write};
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, BufWriter};
 use std::os::unix::process::ExitStatusExt;
 use std::usize;
 use std::{
@@ -283,13 +283,28 @@ fn main() {
         }
         Ok(())
     }
+    fn write_history(path: &str) -> io::Result<()> {
+        let file = File::create(path)?;
+        let mut writer = BufWriter::new(file);
+        let history = {
+            let history = HISTORY.lock().unwrap();
+            history.clone()
+        };
+        for line in history.iter() {
+            writeln!(writer, "{line}")?;
+        }
+        Ok(())
+    }
     fn handle_history(args: &str) -> io::Result<()> {
         let mut parts = args.split_whitespace();
         match parts.next() {
             Some("-r") => {
-                let path = parts
-                    .next()
-                    .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, ""))?;
+                let path = parts.next().ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "expected file path to read from",
+                    )
+                })?;
                 if parts.next().is_some() {
                     return Err(io::Error::new(
                         io::ErrorKind::InvalidInput,
@@ -297,6 +312,15 @@ fn main() {
                     ));
                 }
                 read_history(path)
+            }
+            Some("-w") => {
+                let path = parts.next().ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "expected file path to write history to",
+                    )
+                })?;
+                write_history(path)
             }
             Some(limit) => {
                 if parts.next().is_some() {

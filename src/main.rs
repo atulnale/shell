@@ -324,7 +324,7 @@ fn main() {
                 io::Error::new(io::ErrorKind::InvalidInput, "Missing command in pipeline")
             })?;
 
-            let args: Vec<&str> = parts.collect();
+            let args: Vec<&str> = parts.map(|arg| arg.trim_matches('"')).collect();
 
             // For this version, built-ins are supported only as the first stage.
             let is_last = index == stages.len() - 1;

@@ -241,7 +241,7 @@ fn main() {
             "complete" => completion_command(cmd, args),
             "jobs" => handle_jobs(false),
             "type" => match args {
-                "type" | "echo" | "exit" | "pwd" | "cd" | "complete" | "jobs" => {
+                "type" | "echo" | "exit" | "pwd" | "cd" | "complete" | "jobs" | "history" => {
                     println!("{} is a shell builtin", args)
                 }
                 _ => match check_executable(args) {

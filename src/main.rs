@@ -263,7 +263,8 @@ fn main() {
                 }
             }
             "type" => match args {
-                "type" | "echo" | "exit" | "pwd" | "cd" | "complete" | "jobs" | "history" => {
+                "type" | "echo" | "exit" | "pwd" | "cd" | "complete" | "jobs" | "history"
+                | "declare" => {
                     println!("{} is a shell builtin", args)
                 }
                 _ => match check_executable(args) {

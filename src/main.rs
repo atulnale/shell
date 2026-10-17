@@ -45,6 +45,8 @@ static JOBS_MAP: LazyLock<Mutex<IndexMap<usize, BackgroundProcess>>> =
 static HISTORY: LazyLock<Mutex<Vec<String>>> = LazyLock::new(|| Mutex::new(Vec::new()));
 static HISTORY_APPEND_COUNTER: LazyLock<Mutex<usize>> = LazyLock::new(|| Mutex::new(0));
 static HISTFILE_APPEND_COUNTER: Mutex<usize> = Mutex::new(0);
+static DECLARE_MAP: LazyLock<Mutex<HashMap<String, String>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Helper, Hinter, Highlighter, Validator)]
 struct ShellCompleter;
@@ -300,7 +302,20 @@ fn main() {
                         "Unexpect string after variable",
                     ));
                 }
-                println!("declare: {variable}: not found");
+                match DECLARE_MAP.lock().unwrap().get(variable) {
+                    Some(value) => println!("declare -- {variable}=\"{value}\""),
+                    None => eprintln!("declare: {variable}: not found"),
+                }
+                Ok(())
+            }
+            Some(var_txt) => {
+                let (first, second) = var_txt.split_once("=").ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidInput, "expected a variables")
+                })?;
+                DECLARE_MAP
+                    .lock()
+                    .unwrap()
+                    .insert(first.to_string(), second.to_string());
                 Ok(())
             }
             _ => Ok(()),

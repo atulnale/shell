@@ -312,6 +312,10 @@ fn main() {
                 let (first, second) = var_txt.split_once("=").ok_or_else(|| {
                     io::Error::new(io::ErrorKind::InvalidInput, "expected a variables")
                 })?;
+                if !is_valid_variable_name(first) {
+                    eprintln!("declare: `{var_txt}': not a valid identifier");
+                    return Ok(());
+                }
                 DECLARE_MAP
                     .lock()
                     .unwrap()
@@ -320,6 +324,11 @@ fn main() {
             }
             _ => Ok(()),
         }
+    }
+    fn is_valid_variable_name(name: &str) -> bool {
+        let mut chars = name.chars();
+        matches!(chars.next(), Some('_' | 'a'..='z' | 'A'..='Z'))
+            && chars.all(|c| matches!(c, '_' | 'a'..='z' | 'A'..='Z' | '0'..='9' ))
     }
     fn handle_startup(rl: &mut rustyline::Editor<ShellCompleter, FileHistory>) -> io::Result<()> {
         if let Some(histfile) = env::var("HISTFILE").ok() {

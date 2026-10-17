@@ -288,8 +288,23 @@ fn main() {
         }
     }
     fn handle_declare(args: &str) -> io::Result<()> {
-        println!("declare: missing_variable: not found");
-        Ok(())
+        let mut parts = args.split_whitespace();
+        match parts.next() {
+            Some("-p") => {
+                let variable = parts.next().ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidInput, "expected a variable name")
+                })?;
+                if parts.next().is_some() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "Unexpect string after variable",
+                    ));
+                }
+                println!("declare: {variable}: not found");
+                Ok(())
+            }
+            _ => Ok(()),
+        }
     }
     fn handle_startup(rl: &mut rustyline::Editor<ShellCompleter, FileHistory>) -> io::Result<()> {
         if let Some(histfile) = env::var("HISTFILE").ok() {

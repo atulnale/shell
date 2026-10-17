@@ -1,6 +1,8 @@
 echo 1
 echo 2
-
-echo 3
+exit
+exit
+exit
 echo 4
-history -a history.txt
+history
+exit

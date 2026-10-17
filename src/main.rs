@@ -44,6 +44,7 @@ static JOBS_MAP: LazyLock<Mutex<IndexMap<usize, BackgroundProcess>>> =
     LazyLock::new(|| Mutex::new(IndexMap::new()));
 static HISTORY: LazyLock<Mutex<Vec<String>>> = LazyLock::new(|| Mutex::new(Vec::new()));
 static HISTORY_APPEND_COUNTER: LazyLock<Mutex<usize>> = LazyLock::new(|| Mutex::new(0));
+static HISTFILE_APPEND_COUNTER: Mutex<usize> = Mutex::new(0);
 
 #[derive(Helper, Hinter, Highlighter, Validator)]
 struct ShellCompleter;
@@ -223,11 +224,11 @@ fn main() {
         .build();
     let mut rl = rustyline::Editor::with_config(config).unwrap();
     rl.set_helper(Some(ShellCompleter));
+    if let Err(error) = handle_startup(&mut rl) {
+        println!("Error: {error}");
+    }
     loop {
-        if let Err(error) = handle_startup(&mut rl) {
-            println!("Error: {error}");
-        }
-
+        handle_jobs(true);
         let mut command = rl.readline("$ ").unwrap();
         command = command.trim_end().to_string();
         if command.is_empty() {
@@ -281,22 +282,28 @@ fn main() {
         }
     }
     fn handle_startup(rl: &mut rustyline::Editor<ShellCompleter, FileHistory>) -> io::Result<()> {
-        handle_jobs(true);
         if let Some(histfile) = env::var("HISTFILE").ok() {
             read_history(&histfile);
             let history = {
                 let history = HISTORY.lock().unwrap();
                 history.clone()
             };
-            for hist in history {
+            for hist in history.iter() {
                 rl.add_history_entry(hist);
             }
+            *HISTFILE_APPEND_COUNTER.lock().unwrap() = history.len();
         }
+
         Ok(())
     }
     fn handle_exit(rl: &mut rustyline::Editor<ShellCompleter, FileHistory>) {
         if let Ok(histfile) = env::var("HISTFILE") {
-            if let Err(err) = write_history(&histfile, false, true, 0) {
+            if let Err(err) = write_history(
+                &histfile,
+                false,
+                true,
+                *HISTFILE_APPEND_COUNTER.lock().unwrap(),
+            ) {
                 eprintln!("Error: {err}");
             }
         }

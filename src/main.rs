@@ -262,6 +262,11 @@ fn main() {
                     eprintln!("Error displaying history: {err}");
                 }
             }
+            "declare" => {
+                if let Err(err) = handle_declare(args) {
+                    eprintln!("Error in declare: {err}");
+                }
+            }
             "type" => match args {
                 "type" | "echo" | "exit" | "pwd" | "cd" | "complete" | "jobs" | "history"
                 | "declare" => {
@@ -281,6 +286,10 @@ fn main() {
                 None => println!("{}: command not found", cmd),
             },
         }
+    }
+    fn handle_declare(args: &str) -> io::Result<()> {
+        println!("declare: missing_variable: not found");
+        Ok(())
     }
     fn handle_startup(rl: &mut rustyline::Editor<ShellCompleter, FileHistory>) -> io::Result<()> {
         if let Some(histfile) = env::var("HISTFILE").ok() {

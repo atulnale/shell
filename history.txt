@@ -6,3 +6,25 @@ exit
 echo 4
 history
 exit
+cd /Users/aryan/codebase/rust/codecrafters/codecrafters-shell-rust
+cargo run
+cargo run
+cargo run
+cargo run
+cat strawberry.txt
+vi history.txt
+cargo run
+cargo run
+export HISTFILE=history.txt
+cargo run
+less history.txt
+rm -rf history.txt
+export HISTFILE=history.txt
+cargo run
+less history.txt
+cargo run
+ls
+vi history.txt
+cargo run
+cargo run
+less history.txt

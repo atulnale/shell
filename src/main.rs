@@ -248,46 +248,77 @@ fn main() {
         }
         let mut parse = command.splitn(2, char::is_whitespace);
         let cmd = parse.next().unwrap();
-        let args = parse.next().unwrap_or("").trim_start();
+        let mut args: String = parse.next().unwrap_or("").trim_start().to_string();
+        let mut args_vec: Vec<String> = Vec::new();
+
+        for ele in args.split_whitespace() {
+            if ele.contains("$") {
+                args_vec.push(resolve_var(ele));
+            } else {
+                args_vec.push(ele.to_string());
+            }
+        }
+        args = args_vec.join(" ");
         match cmd {
             "exit" => {
                 handle_exit(&mut rl);
                 break;
             }
-            "echo" => builtin_redirect(cmd, args),
+            "echo" => builtin_redirect(cmd, &args),
             "pwd" => println!("{}", env::current_dir().unwrap().display()),
-            "cd" => change_directory(args),
-            "complete" => completion_command(cmd, args),
+            "cd" => change_directory(&args),
+            "complete" => completion_command(cmd, &args),
             "jobs" => handle_jobs(false),
             "history" => {
-                if let Err(err) = handle_history(args) {
+                if let Err(err) = handle_history(&args) {
                     eprintln!("Error displaying history: {err}");
                 }
             }
             "declare" => {
-                if let Err(err) = handle_declare(args) {
+                if let Err(err) = handle_declare(&args) {
                     eprintln!("Error in declare: {err}");
                 }
             }
-            "type" => match args {
+            "type" => match args.as_str() {
                 "type" | "echo" | "exit" | "pwd" | "cd" | "complete" | "jobs" | "history"
                 | "declare" => {
                     println!("{} is a shell builtin", args)
                 }
-                _ => match check_executable(args) {
+                _ => match check_executable(&args) {
                     Some(x) => println!("{} is {}", args, x),
                     None => println!("{}: not found", args),
                 },
             },
             _ => match check_executable(cmd) {
                 Some(_) => {
-                    if let Err(err) = execute_program(cmd, args) {
+                    if let Err(err) = execute_program(cmd, &args) {
                         eprint!("Error: {err}");
                     }
                 }
                 None => println!("{}: command not found", cmd),
             },
         }
+    }
+
+    fn resolve_var(ele: &str) -> String {
+        let start = ele.find("$").unwrap();
+        let mut result = String::from(&ele[..start]);
+        let mut pref = String::new();
+        for ch in ele.chars().skip(start + 1) {
+            pref.push(ch);
+            match DECLARE_MAP.lock().unwrap().get(&pref) {
+                Some(x) => {
+                    let mut x = x.clone();
+                    if pref.len() < ele.len() {
+                        x.push_str(&ele[start + pref.len() + 1..]);
+                    }
+                    result.push_str(x.as_str());
+                    return result;
+                }
+                None => continue,
+            }
+        }
+        String::new()
     }
     fn handle_declare(args: &str) -> io::Result<()> {
         let mut parts = args.split_whitespace();

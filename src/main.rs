@@ -301,24 +301,44 @@ fn main() {
     }
 
     fn resolve_var(ele: &str) -> String {
-        let start = ele.find("$").unwrap();
-        let mut result = String::from(&ele[..start]);
-        let mut pref = String::new();
-        for ch in ele.chars().skip(start + 1) {
-            pref.push(ch);
-            match DECLARE_MAP.lock().unwrap().get(&pref) {
-                Some(x) => {
-                    let mut x = x.clone();
-                    if pref.len() < ele.len() {
-                        x.push_str(&ele[start + pref.len() + 1..]);
+        let mut replaced: String = ele.to_string();
+        while let Some(start) = replaced.find("$") {
+            if &replaced[start..start + 2] == "${" {
+                let end = replaced.find("}").unwrap();
+                let var_name = &replaced[start + 2..end];
+                let var_value = String::new();
+                let var_value = match DECLARE_MAP.lock().unwrap().get(var_name) {
+                    Some(x) => x.to_owned(),
+                    None => String::new(),
+                };
+                replaced = format!(
+                    "{}{}{}",
+                    &replaced[..start],
+                    var_value,
+                    &replaced[end + 1..]
+                )
+            } else {
+                let mut result = String::from(&replaced[..start]);
+                let mut pref = String::new();
+                for ch in replaced.chars().skip(start + 1) {
+                    pref.push(ch);
+                    match DECLARE_MAP.lock().unwrap().get(&pref) {
+                        Some(x) => {
+                            let mut x = x.clone();
+                            if pref.len() < replaced.len() {
+                                x.push_str(&replaced[start + pref.len() + 1..]);
+                            }
+                            result.push_str(x.as_str());
+                            replaced = result;
+                            break;
+                        }
+                        None => continue,
                     }
-                    result.push_str(x.as_str());
-                    return result;
                 }
-                None => continue,
             }
         }
-        String::new()
+
+        replaced
     }
     fn handle_declare(args: &str) -> io::Result<()> {
         let mut parts = args.split_whitespace();

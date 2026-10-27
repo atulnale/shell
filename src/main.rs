@@ -320,6 +320,7 @@ fn main() {
             } else {
                 let mut result = String::from(&replaced[..start]);
                 let mut pref = String::new();
+                let mut found = false;
                 for ch in replaced.chars().skip(start + 1) {
                     pref.push(ch);
                     match DECLARE_MAP.lock().unwrap().get(&pref) {
@@ -330,10 +331,14 @@ fn main() {
                             }
                             result.push_str(x.as_str());
                             replaced = result;
+                            found = true;
                             break;
                         }
                         None => continue,
                     }
+                }
+                if !found {
+                    replaced = String::new();
                 }
             }
         }
